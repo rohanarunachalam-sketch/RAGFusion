@@ -1,0 +1,16 @@
+streamlit
+fastapi
+uvicorn
+python-multipart
+requests
+langchain
+langchain-openai
+langchain-community
+langchain-text-splitters
+openai
+faiss-cpu
+pymupdf
+neo4j
+python-dotenv
+tiktoken
+rank-bm25
