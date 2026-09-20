@@ -24,8 +24,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
 VECTORSTORE_DIR = PROJECT_ROOT / "data" / "vectorstores"
 
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-VECTORSTORE_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR.mkdir(
+    parents=True,
+    exist_ok=True
+)
+
+VECTORSTORE_DIR.mkdir(
+    parents=True,
+    exist_ok=True
+)
 
 
 # =========================================================
@@ -33,7 +40,7 @@ VECTORSTORE_DIR.mkdir(parents=True, exist_ok=True)
 # =========================================================
 
 app = FastAPI(
-    title="Hybrid RAG Backend",
+    title="RAGFusion Backend",
     description="Backend API for Vector Search + Knowledge Graph RAG",
     version="1.0.0",
 )
@@ -44,7 +51,10 @@ app = FastAPI(
 # =========================================================
 
 class QuestionRequest(BaseModel):
+
     question: str
+
+    document_id: str | None = None
 
 
 # =========================================================
@@ -53,8 +63,9 @@ class QuestionRequest(BaseModel):
 
 @app.get("/")
 def root():
+
     return {
-        "message": "Hybrid RAG Backend is running.",
+        "message": "RAGFusion Backend is running.",
         "docs": "/docs",
         "health": "/health"
     }
@@ -66,9 +77,10 @@ def root():
 
 @app.get("/health")
 def health_check():
+
     return {
         "status": "ok",
-        "service": "hybrid-rag-backend"
+        "service": "ragfusion-backend"
     }
 
 
@@ -77,124 +89,226 @@ def health_check():
 # =========================================================
 
 @app.post("/process")
-async def process_document(file: UploadFile = File(...)):
+async def process_document(
+    file: UploadFile = File(...)
+):
+
+    # -----------------------------------------------------
+    # VALIDATE FILE
+    # -----------------------------------------------------
 
     if not file.filename:
+
         raise HTTPException(
             status_code=400,
             detail="No file was provided."
         )
 
     if not file.filename.lower().endswith(".pdf"):
+
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are supported."
         )
 
-    filename = Path(file.filename).name
+    filename = Path(
+        file.filename
+    ).name
+
     pdf_path = UPLOAD_DIR / filename
 
     try:
 
         # -------------------------------------------------
-        # Save uploaded PDF
+        # SAVE PDF
         # -------------------------------------------------
 
-        with open(pdf_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        with open(
+            pdf_path,
+            "wb"
+        ) as buffer:
+
+            shutil.copyfileobj(
+                file.file,
+                buffer
+            )
 
         # -------------------------------------------------
-        # Calculate file hash
+        # CALCULATE DOCUMENT HASH
         # -------------------------------------------------
 
         file_hash = calculate_file_hash(
             str(pdf_path)
         )
 
-        print("\n" + "=" * 60)
-        print("DOCUMENT CHECK")
-        print("=" * 60)
-        print(f"Filename : {filename}")
-        print(f"SHA-256  : {file_hash}")
+        document_id = file_hash
+
+        print(
+            "\n" + "=" * 60
+        )
+
+        print(
+            "DOCUMENT CHECK"
+        )
+
+        print(
+            "=" * 60
+        )
+
+        print(
+            f"Filename    : {filename}"
+        )
+
+        print(
+            f"Document ID : {document_id}"
+        )
 
         # -------------------------------------------------
-        # Check whether document already exists
+        # CHECK DUPLICATE
         # -------------------------------------------------
 
         existing_document = get_document(
-            file_hash
+            document_id
         )
 
         if existing_document:
 
-            print("\nDocument already processed.")
-            print("Skipping ingestion.")
+            print(
+                "\nDocument already processed."
+            )
+
+            print(
+                "Skipping ingestion."
+            )
 
             return {
+
                 "success": True,
+
                 "already_processed": True,
+
                 "message": (
-                    "This document has already been processed. "
-                    "Ingestion was skipped."
+                    "This document has already been "
+                    "processed. Ingestion was skipped."
                 ),
+
                 "filename": existing_document.get(
                     "filename",
                     filename
                 ),
-                "file_hash": file_hash
+
+                "document_id": document_id
+
             }
 
         # -------------------------------------------------
-        # New document
+        # NEW DOCUMENT
         # -------------------------------------------------
 
-        print("\nNew document detected.")
-        print("Starting ingestion...")
+        print(
+            "\nNew document detected."
+        )
+
+        print(
+            "Starting ingestion..."
+        )
 
         # -------------------------------------------------
-        # Vector ingestion
+        # DOCUMENT-SPECIFIC VECTOR STORE
         # -------------------------------------------------
 
-        print("\n[1/2] Creating vector database...")
+        document_vectorstore_dir = (
+            VECTORSTORE_DIR / document_id
+        )
+
+        print(
+            "\nVector Store:"
+        )
+
+        print(
+            document_vectorstore_dir
+        )
+
+        # -------------------------------------------------
+        # VECTOR INGESTION
+        # -------------------------------------------------
+
+        print(
+            "\n[1/2] Creating document vector database..."
+        )
 
         create_vector_store(
+
             str(pdf_path),
-            str(VECTORSTORE_DIR)
+
+            str(
+                document_vectorstore_dir
+            ),
+
+            document_id=document_id
+
         )
 
         # -------------------------------------------------
-        # Knowledge graph ingestion
+        # KNOWLEDGE GRAPH INGESTION
         # -------------------------------------------------
 
-        print("\n[2/2] Creating knowledge graph...")
+        print(
+            "\n[2/2] Creating knowledge graph..."
+        )
 
         process_pdf(
-            str(pdf_path)
+
+            str(pdf_path),
+
+            document_id=document_id
+
         )
 
         # -------------------------------------------------
-        # Register document
+        # REGISTER DOCUMENT
         # -------------------------------------------------
 
         register_document(
-            file_hash=file_hash,
+
+            file_hash=document_id,
+
             filename=filename,
+
             file_size=pdf_path.stat().st_size,
-            vectorstore_path=str(VECTORSTORE_DIR)
+
+            vectorstore_path=str(
+                document_vectorstore_dir
+            )
+
         )
 
-        print("\nDocument registered successfully.")
+        print(
+            "\nDocument registered successfully."
+        )
 
-        print("=" * 60)
+        print(
+            "=" * 60
+        )
+
+        # -------------------------------------------------
+        # SUCCESS RESPONSE
+        # -------------------------------------------------
 
         return {
+
             "success": True,
+
             "already_processed": False,
+
             "message": (
                 "PDF processed and registered successfully."
             ),
+
             "filename": filename,
-            "file_hash": file_hash
+
+            "document_id": document_id
+
         }
 
     except Exception as e:
@@ -204,8 +318,13 @@ async def process_document(file: UploadFile = File(...)):
         )
 
         raise HTTPException(
+
             status_code=500,
-            detail=f"Document processing failed: {str(e)}"
+
+            detail=(
+                f"Document processing failed: {str(e)}"
+            )
+
         )
 
     finally:
@@ -218,31 +337,82 @@ async def process_document(file: UploadFile = File(...)):
 # =========================================================
 
 @app.post("/ask")
-def ask_question(request: QuestionRequest):
+def ask_question(
+    request: QuestionRequest
+):
+
+    # -----------------------------------------------------
+    # CLEAN QUESTION
+    # -----------------------------------------------------
 
     question = request.question.strip()
 
+    # -----------------------------------------------------
+    # VALIDATE QUESTION
+    # -----------------------------------------------------
+
     if not question:
+
         raise HTTPException(
             status_code=400,
             detail="Question cannot be empty."
         )
 
+    # -----------------------------------------------------
+    # VALIDATE DOCUMENT ID
+    # -----------------------------------------------------
+
+    if not request.document_id:
+
+        raise HTTPException(
+
+            status_code=400,
+
+            detail=(
+                "Document ID is required. "
+                "Please process a document first."
+            )
+
+        )
+
+    # -----------------------------------------------------
+    # GENERATE ANSWER
+    # -----------------------------------------------------
+
     try:
 
         answer = generate_answer(
-            question
+
+            question=question,
+
+            document_id=request.document_id
+
         )
 
         return {
+
             "success": True,
+
             "question": question,
+
+            "document_id": request.document_id,
+
             "answer": answer
+
         }
 
     except Exception as e:
 
+        print(
+            f"\nAnswer generation error: {e}"
+        )
+
         raise HTTPException(
+
             status_code=500,
-            detail=f"Answer generation failed: {str(e)}"
+
+            detail=(
+                f"Answer generation failed: {str(e)}"
+            )
+
         )

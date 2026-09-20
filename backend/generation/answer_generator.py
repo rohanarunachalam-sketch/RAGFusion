@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+
 # ============================================================
 # PROJECT ROOT
 # ============================================================
@@ -40,7 +41,10 @@ from backend.guardrails.output_guardrail import (
 # ANSWER GENERATOR
 # ============================================================
 
-def generate_answer(question: str):
+def generate_answer(
+    question: str,
+    document_id: str
+):
 
     # ========================================================
     # 1. INPUT GUARDRAIL
@@ -56,18 +60,45 @@ def generate_answer(question: str):
 
 
     # ========================================================
-    # 2. HYBRID RETRIEVAL
+    # 2. DOCUMENT ID VALIDATION
     # ========================================================
 
-    hybrid_results = hybrid_retrieve(
-        question,
-        vector_k=5,
-        kg_limit=10
-    )
+    if not document_id:
+
+        return (
+            "Document ID is required. "
+            "Please process a document first."
+        )
 
 
     # ========================================================
-    # 3. FORMAT CONTEXT
+    # 3. HYBRID RETRIEVAL
+    # ========================================================
+
+    try:
+
+        hybrid_results = hybrid_retrieve(
+            question=question,
+            document_id=document_id,
+            vector_k=5,
+            kg_limit=10
+        )
+
+    except Exception as e:
+
+        print(
+            f"\nRetrieval error: {e}"
+        )
+
+        return (
+            "I couldn't retrieve information "
+            "from the uploaded document. "
+            "Please try processing the document again."
+        )
+
+
+    # ========================================================
+    # 4. FORMAT CONTEXT
     # ========================================================
 
     context = format_hybrid_context(
@@ -76,7 +107,7 @@ def generate_answer(question: str):
 
 
     # ========================================================
-    # 4. CREATE LLM
+    # 5. CREATE LLM
     # ========================================================
 
     llm = ChatOpenAI(
@@ -87,7 +118,7 @@ def generate_answer(question: str):
 
 
     # ========================================================
-    # 5. SYSTEM PROMPT
+    # 6. SYSTEM PROMPT
     # ========================================================
 
     prompt = f"""
@@ -163,7 +194,7 @@ FINAL ANSWER:
 
 
     # ========================================================
-    # 6. GENERATE ANSWER
+    # 7. GENERATE ANSWER
     # ========================================================
 
     try:
@@ -172,7 +203,11 @@ FINAL ANSWER:
             prompt
         )
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            f"\nLLM generation error: {e}"
+        )
 
         return (
             "I couldn't generate an answer at the moment. "
@@ -181,7 +216,7 @@ FINAL ANSWER:
 
 
     # ========================================================
-    # 7. EXTRACT RESPONSE
+    # 8. EXTRACT RESPONSE
     # ========================================================
 
     content = response.content
@@ -195,20 +230,18 @@ FINAL ANSWER:
             for item in content
         )
 
-
     content = str(
         content
     ).strip()
 
 
     # ========================================================
-    # 8. OUTPUT GUARDRAIL
+    # 9. OUTPUT GUARDRAIL
     # ========================================================
 
     output_check = validate_answer(
         content
     )
-
 
     if not output_check["allowed"]:
 
@@ -216,7 +249,7 @@ FINAL ANSWER:
 
 
     # ========================================================
-    # 9. RETURN SAFE ANSWER
+    # 10. RETURN SAFE ANSWER
     # ========================================================
 
     return output_check["answer"]
@@ -228,28 +261,46 @@ FINAL ANSWER:
 
 if __name__ == "__main__":
 
-    print("\n" + "=" * 60)
-    print("HYBRID RAG ANSWER GENERATION TEST")
-    print("=" * 60)
+    print(
+        "\n" + "=" * 60
+    )
 
-    question = input(
-        "\nEnter your question: "
+    print(
+        "HYBRID RAG ANSWER GENERATION TEST"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    document_id = input(
+        "\nEnter document ID: "
     ).strip()
 
+    question = input(
+        "Enter your question: "
+    ).strip()
 
     print(
         "\nGenerating answer...\n"
     )
 
-
     answer = generate_answer(
-        question
+        question=question,
+        document_id=document_id
     )
 
+    print(
+        "=" * 60
+    )
 
-    print("=" * 60)
-    print("FINAL ANSWER")
-    print("=" * 60)
+    print(
+        "FINAL ANSWER"
+    )
+
+    print(
+        "=" * 60
+    )
 
     print(
         answer

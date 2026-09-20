@@ -12,6 +12,10 @@ from backend.ingestion.pdf_loader import load_pdf
 from backend.database.neo4j_store import Neo4jStore
 
 
+# ============================================================
+# KNOWLEDGE EXTRACTION
+# ============================================================
+
 def extract_knowledge(text):
 
     llm = ChatOpenAI(
@@ -68,11 +72,14 @@ DOCUMENT:
 {text}
 """
 
-    response = llm.invoke(prompt)
+    response = llm.invoke(
+        prompt
+    )
 
     content = response.content
 
     if isinstance(content, list):
+
         content = "".join(
             item.get("text", "")
             if isinstance(item, dict)
@@ -83,49 +90,129 @@ DOCUMENT:
     content = content.strip()
 
     if content.startswith("```"):
-        content = content.replace("```json", "")
-        content = content.replace("```", "")
+
+        content = content.replace(
+            "```json",
+            ""
+        )
+
+        content = content.replace(
+            "```",
+            ""
+        )
+
         content = content.strip()
 
-    return json.loads(content)
+    return json.loads(
+        content
+    )
 
 
-def process_pdf(pdf_path):
+# ============================================================
+# ADD DOCUMENT ID TO ENTITIES
+# ============================================================
 
-    print("\n" + "=" * 60)
-    print("KNOWLEDGE GRAPH INGESTION")
-    print("=" * 60)
+def add_document_id(
+    entities,
+    document_id
+):
+
+    updated_entities = []
+
+    for entity in entities:
+
+        updated_entity = dict(
+            entity
+        )
+
+        updated_entity["document_id"] = (
+            document_id
+        )
+
+        updated_entities.append(
+            updated_entity
+        )
+
+    return updated_entities
+
+
+# ============================================================
+# PROCESS PDF
+# ============================================================
+
+def process_pdf(
+    pdf_path,
+    document_id=None
+):
+
+    print(
+        "\n" + "=" * 60
+    )
+
+    print(
+        "KNOWLEDGE GRAPH INGESTION"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    if not document_id:
+
+        raise ValueError(
+            "Document ID is required for "
+            "document-specific KG ingestion."
+        )
+
+    print(
+        f"\nDocument ID: {document_id}"
+    )
 
     # --------------------------------
     # Load PDF
     # --------------------------------
 
-    print("\n[1/4] Loading PDF...")
+    print(
+        "\n[1/4] Loading PDF..."
+    )
 
-    pages = load_pdf(pdf_path)
+    pages = load_pdf(
+        pdf_path
+    )
 
-    print(f"Pages loaded: {len(pages)}")
+    print(
+        f"Pages loaded: {len(pages)}"
+    )
 
     # --------------------------------
     # Combine text
     # --------------------------------
 
-    print("\n[2/4] Preparing document text...")
+    print(
+        "\n[2/4] Preparing document text..."
+    )
 
     full_text = "\n\n".join(
         f"PAGE {page['page']}\n{page['text']}"
         for page in pages
     )
 
-    print(f"Characters: {len(full_text)}")
+    print(
+        f"Characters: {len(full_text)}"
+    )
 
     # --------------------------------
     # Extract knowledge
     # --------------------------------
 
-    print("\n[3/4] Extracting entities and relationships...")
+    print(
+        "\n[3/4] Extracting entities "
+        "and relationships..."
+    )
 
-    knowledge = extract_knowledge(full_text)
+    knowledge = extract_knowledge(
+        full_text
+    )
 
     entities = knowledge.get(
         "entities",
@@ -137,14 +224,30 @@ def process_pdf(pdf_path):
         []
     )
 
-    print(f"Entities      : {len(entities)}")
-    print(f"Relationships : {len(relationships)}")
+    print(
+        f"Entities      : {len(entities)}"
+    )
+
+    print(
+        f"Relationships : {len(relationships)}"
+    )
+
+    # --------------------------------
+    # Add document ID
+    # --------------------------------
+
+    entities = add_document_id(
+        entities,
+        document_id
+    )
 
     # --------------------------------
     # Store in Neo4j
     # --------------------------------
 
-    print("\n[4/4] Storing knowledge graph...")
+    print(
+        "\n[4/4] Storing knowledge graph..."
+    )
 
     store = Neo4jStore()
 
@@ -152,21 +255,36 @@ def process_pdf(pdf_path):
 
         message = store.test_connection()
 
-        print(message)
+        print(
+            message
+        )
 
         store.create_graph(
             entities,
-            relationships
+            relationships,
+            document_id=document_id
         )
 
     finally:
 
         store.close()
 
-    print("\n" + "=" * 60)
-    print("KNOWLEDGE GRAPH INGESTION COMPLETE")
-    print("=" * 60)
+    print(
+        "\n" + "=" * 60
+    )
 
+    print(
+        "KNOWLEDGE GRAPH INGESTION COMPLETE"
+    )
+
+    print(
+        "=" * 60
+    )
+
+
+# ============================================================
+# TEST
+# ============================================================
 
 if __name__ == "__main__":
 
@@ -174,4 +292,11 @@ if __name__ == "__main__":
         "\nEnter PDF path: "
     ).strip()
 
-    process_pdf(pdf_path)
+    document_id = input(
+        "Enter document ID: "
+    ).strip()
+
+    process_pdf(
+        pdf_path,
+        document_id=document_id
+    )

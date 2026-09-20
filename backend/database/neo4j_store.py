@@ -9,7 +9,12 @@ from backend.config import (
 
 class Neo4jStore:
 
+    # ========================================================
+    # INITIALIZE
+    # ========================================================
+
     def __init__(self):
+
         self.driver = GraphDatabase.driver(
             NEO4J_URI,
             auth=(
@@ -18,8 +23,17 @@ class Neo4jStore:
             )
         )
 
+    # ========================================================
+    # CLOSE
+    # ========================================================
+
     def close(self):
+
         self.driver.close()
+
+    # ========================================================
+    # TEST CONNECTION
+    # ========================================================
 
     def test_connection(self):
 
@@ -31,6 +45,10 @@ class Neo4jStore:
 
             return result.single()["message"]
 
+    # ========================================================
+    # CLEAR DATABASE
+    # ========================================================
+
     def clear_database(self):
 
         with self.driver.session() as session:
@@ -39,33 +57,167 @@ class Neo4jStore:
                 "MATCH (n) DETACH DELETE n"
             )
 
-    def create_graph(self, entities, relationships):
+    # ========================================================
+    # CREATE GRAPH
+    # ========================================================
+
+    def create_graph(
+        self,
+        entities,
+        relationships,
+        document_id
+    ):
+
+        if not document_id:
+
+            raise ValueError(
+                "Document ID is required."
+            )
 
         with self.driver.session() as session:
+
+            # ------------------------------------------------
+            # CREATE ENTITIES
+            # ------------------------------------------------
 
             for entity in entities:
 
                 session.run(
                     """
-                    MERGE (e:Entity {name: $name})
+                    MERGE (
+                        e:Entity {
+                            name: $name,
+                            document_id: $document_id
+                        }
+                    )
+
                     SET e.type = $type
                     """,
+
                     name=entity["name"],
-                    type=entity["type"]
+
+                    type=entity["type"],
+
+                    document_id=document_id
                 )
+
+            # ------------------------------------------------
+            # CREATE RELATIONSHIPS
+            # ------------------------------------------------
 
             for relationship in relationships:
 
                 session.run(
                     """
-                    MATCH (source:Entity {name: $source})
-                    MATCH (target:Entity {name: $target})
+                    MATCH (
+                        source:Entity {
+                            name: $source,
+                            document_id: $document_id
+                        }
+                    )
 
-                    MERGE (source)-[r:RELATED_TO {
+                    MATCH (
+                        target:Entity {
+                            name: $target,
+                            document_id: $document_id
+                        }
+                    )
+
+                    MERGE (
+                        source
+                    )-[r:RELATED_TO {
                         type: $relation
-                    }]->(target)
+                    }]->(
+                        target
+                    )
                     """,
+
                     source=relationship["source"],
+
                     target=relationship["target"],
-                    relation=relationship["relation"]
+
+                    relation=relationship["relation"],
+
+                    document_id=document_id
                 )
+
+    # ========================================================
+    # DOCUMENT STATISTICS
+    # ========================================================
+
+    def get_document_stats(
+        self,
+        document_id
+    ):
+
+        if not document_id:
+
+            raise ValueError(
+                "Document ID is required."
+            )
+
+        with self.driver.session() as session:
+
+            result = session.run(
+                """
+                MATCH (n:Entity)
+
+                WHERE n.document_id = $document_id
+
+                OPTIONAL MATCH (
+                    n
+                )-[r:RELATED_TO]->(
+                    target:Entity
+                )
+
+                WHERE target.document_id = $document_id
+
+                RETURN
+                    count(DISTINCT n) AS entities,
+                    count(DISTINCT r) AS relationships
+                """,
+
+                document_id=document_id
+            )
+
+            record = result.single()
+
+            return {
+                "entities": record["entities"],
+                "relationships": record["relationships"]
+            }
+
+
+# ============================================================
+# TEST
+# ============================================================
+
+if __name__ == "__main__":
+
+    print(
+        "\n" + "=" * 60
+    )
+
+    print(
+        "NEO4J STORE TEST"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    store = Neo4jStore()
+
+    try:
+
+        print(
+            "\n" + store.test_connection()
+        )
+
+        print(
+            "\nNeo4j connection is working."
+        )
+
+    finally:
+
+        store.close()

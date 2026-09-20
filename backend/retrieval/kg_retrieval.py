@@ -1,4 +1,5 @@
 import json
+
 from langchain_openai import ChatOpenAI
 from neo4j import GraphDatabase
 
@@ -18,24 +19,61 @@ from backend.config import (
 class KGDatabase:
 
     def __init__(self):
+
         self.driver = GraphDatabase.driver(
             NEO4J_URI,
-            auth=(NEO4J_USERNAME, NEO4J_PASSWORD)
+            auth=(
+                NEO4J_USERNAME,
+                NEO4J_PASSWORD
+            )
         )
 
     def close(self):
+
         self.driver.close()
 
-    def get_entity_types(self):
+    # --------------------------------------------------------
+    # ENTITY TYPES
+    # --------------------------------------------------------
 
-        query = """
-        MATCH (n:Entity)
-        RETURN DISTINCT n.type AS type
-        ORDER BY type
-        """
+    def get_entity_types(
+        self,
+        document_id=None
+    ):
+
+        if document_id:
+
+            query = """
+            MATCH (n:Entity)
+            WHERE n.document_id = $document_id
+
+            RETURN DISTINCT n.type AS type
+
+            ORDER BY type
+            """
+
+            parameters = {
+                "document_id": document_id
+            }
+
+        else:
+
+            query = """
+            MATCH (n:Entity)
+
+            RETURN DISTINCT n.type AS type
+
+            ORDER BY type
+            """
+
+            parameters = {}
 
         with self.driver.session() as session:
-            result = session.run(query)
+
+            result = session.run(
+                query,
+                **parameters
+            )
 
             return [
                 record["type"]
@@ -47,45 +85,105 @@ class KGDatabase:
     # ENTITY SEARCH
     # --------------------------------------------------------
 
-    def search_specific_entity(self, search_terms, limit=10):
+    def search_specific_entity(
+        self,
+        search_terms,
+        document_id=None,
+        limit=10
+    ):
 
-        query = """
-        MATCH (n:Entity)
+        if document_id:
 
-        WHERE any(
-            term IN $search_terms
+            query = """
+            MATCH (n:Entity)
+
             WHERE
-                toLower(n.name) = toLower(term)
-                OR
-                toLower(n.name) CONTAINS toLower(term)
-        )
+                n.document_id = $document_id
+                AND
+                any(
+                    term IN $search_terms
+                    WHERE
+                        toLower(n.name) = toLower(term)
+                        OR
+                        toLower(n.name)
+                        CONTAINS toLower(term)
+                )
 
-        OPTIONAL MATCH (n)-[r:RELATED_TO]-(connected:Entity)
+            OPTIONAL MATCH
+                (n)-[r:RELATED_TO]-(connected:Entity)
 
-        RETURN
-            n.name AS entity,
-            n.type AS type,
-            collect(
-                CASE
-                    WHEN r IS NOT NULL
-                    THEN {
-                        source: startNode(r).name,
-                        relationship: r.type,
-                        target: endNode(r).name
-                    }
-                    ELSE NULL
-                END
-            ) AS relationships
+            WHERE
+                connected.document_id = $document_id
 
-        LIMIT $limit
-        """
+            RETURN
+                n.name AS entity,
+                n.type AS type,
+                collect(
+                    CASE
+                        WHEN r IS NOT NULL
+                        THEN {
+                            source: startNode(r).name,
+                            relationship: r.type,
+                            target: endNode(r).name
+                        }
+                        ELSE NULL
+                    END
+                ) AS relationships
+
+            LIMIT $limit
+            """
+
+            parameters = {
+                "search_terms": search_terms,
+                "document_id": document_id,
+                "limit": limit
+            }
+
+        else:
+
+            query = """
+            MATCH (n:Entity)
+
+            WHERE any(
+                term IN $search_terms
+                WHERE
+                    toLower(n.name) = toLower(term)
+                    OR
+                    toLower(n.name)
+                    CONTAINS toLower(term)
+            )
+
+            OPTIONAL MATCH
+                (n)-[r:RELATED_TO]-(connected:Entity)
+
+            RETURN
+                n.name AS entity,
+                n.type AS type,
+                collect(
+                    CASE
+                        WHEN r IS NOT NULL
+                        THEN {
+                            source: startNode(r).name,
+                            relationship: r.type,
+                            target: endNode(r).name
+                        }
+                        ELSE NULL
+                    END
+                ) AS relationships
+
+            LIMIT $limit
+            """
+
+            parameters = {
+                "search_terms": search_terms,
+                "limit": limit
+            }
 
         with self.driver.session() as session:
 
             result = session.run(
                 query,
-                search_terms=search_terms,
-                limit=limit
+                **parameters
             )
 
             return [
@@ -101,44 +199,94 @@ class KGDatabase:
         self,
         entity_types,
         search_terms=None,
+        document_id=None,
         limit=20
     ):
 
         search_terms = search_terms or []
 
-        query = """
-        MATCH (n:Entity)
+        if document_id:
 
-        WHERE n.type IN $entity_types
+            query = """
+            MATCH (n:Entity)
 
-        OPTIONAL MATCH (n)-[r:RELATED_TO]-(connected:Entity)
+            WHERE
+                n.document_id = $document_id
+                AND
+                n.type IN $entity_types
 
-        RETURN
-            n.name AS entity,
-            n.type AS type,
-            collect(
-                CASE
-                    WHEN r IS NOT NULL
-                    THEN {
-                        source: startNode(r).name,
-                        relationship: r.type,
-                        target: endNode(r).name
-                    }
-                    ELSE NULL
-                END
-            ) AS relationships
+            OPTIONAL MATCH
+                (n)-[r:RELATED_TO]-(connected:Entity)
 
-        ORDER BY n.name
+            WHERE
+                connected.document_id = $document_id
 
-        LIMIT $limit
-        """
+            RETURN
+                n.name AS entity,
+                n.type AS type,
+                collect(
+                    CASE
+                        WHEN r IS NOT NULL
+                        THEN {
+                            source: startNode(r).name,
+                            relationship: r.type,
+                            target: endNode(r).name
+                        }
+                        ELSE NULL
+                    END
+                ) AS relationships
+
+            ORDER BY n.name
+
+            LIMIT $limit
+            """
+
+            parameters = {
+                "entity_types": entity_types,
+                "document_id": document_id,
+                "limit": limit
+            }
+
+        else:
+
+            query = """
+            MATCH (n:Entity)
+
+            WHERE n.type IN $entity_types
+
+            OPTIONAL MATCH
+                (n)-[r:RELATED_TO]-(connected:Entity)
+
+            RETURN
+                n.name AS entity,
+                n.type AS type,
+                collect(
+                    CASE
+                        WHEN r IS NOT NULL
+                        THEN {
+                            source: startNode(r).name,
+                            relationship: r.type,
+                            target: endNode(r).name
+                        }
+                        ELSE NULL
+                    END
+                ) AS relationships
+
+            ORDER BY n.name
+
+            LIMIT $limit
+            """
+
+            parameters = {
+                "entity_types": entity_types,
+                "limit": limit
+            }
 
         with self.driver.session() as session:
 
             result = session.run(
                 query,
-                entity_types=entity_types,
-                limit=limit
+                **parameters
             )
 
             return [
@@ -151,7 +299,10 @@ class KGDatabase:
 # LLM QUERY UNDERSTANDING
 # ============================================================
 
-def understand_question(question, available_types):
+def understand_question(
+    question,
+    available_types
+):
 
     llm = ChatOpenAI(
         model=LLM_MODEL,
@@ -166,7 +317,10 @@ The Knowledge Graph can contain documents from ANY domain.
 
 Available entity types:
 
-{json.dumps(available_types, indent=2)}
+{json.dumps(
+    available_types,
+    indent=2
+)}
 
 User question:
 
@@ -202,7 +356,7 @@ search_terms:
 "What databases does the application use?"
 
 search_terms:
-["application"]
+[]
 
 "What does Kubernetes provide?"
 
@@ -323,35 +477,17 @@ search_mode = "entity"
 
 Do NOT return every entity of that type.
 
-For example:
-
-Question:
-"What technologies does Next.js use?"
-
-CORRECT:
-
-{{
-    "search_terms": ["Next.js"],
-    "entity_types": ["Technology"],
-    "search_mode": "entity"
-}}
-
-INCORRECT:
-
-{{
-    "search_terms": ["Next.js"],
-    "entity_types": ["Technology"],
-    "search_mode": "type"
-}}
-
 Return ONLY JSON.
 """
 
-    response = llm.invoke(prompt)
+    response = llm.invoke(
+        prompt
+    )
 
     content = response.content
 
     if isinstance(content, list):
+
         content = "".join(
             item.get("text", "")
             if isinstance(item, dict)
@@ -362,33 +498,57 @@ Return ONLY JSON.
     content = content.strip()
 
     if content.startswith("```"):
-        content = content.replace("```json", "")
-        content = content.replace("```", "")
+
+        content = content.replace(
+            "```json",
+            ""
+        )
+
+        content = content.replace(
+            "```",
+            ""
+        )
+
         content = content.strip()
 
-    return json.loads(content)
+    return json.loads(
+        content
+    )
 
 
 # ============================================================
 # FORMAT RESULTS
 # ============================================================
 
-def format_results(results):
+def format_results(
+    results
+):
 
     if not results:
-        return "No relevant knowledge graph results found."
+
+        return (
+            "No relevant knowledge graph "
+            "results found."
+        )
 
     output = []
 
-    for index, item in enumerate(results, start=1):
+    for index, item in enumerate(
+        results,
+        start=1
+    ):
 
         output.append(
-            f"{index}. {item['entity']} ({item['type']})"
+            f"{index}. "
+            f"{item['entity']} "
+            f"({item['type']})"
         )
 
-        relationships = item.get("relationships", [])
+        relationships = item.get(
+            "relationships",
+            []
+        )
 
-        # Remove duplicate relationships
         seen = set()
 
         for rel in relationships:
@@ -396,9 +556,17 @@ def format_results(results):
             if not rel:
                 continue
 
-            source = rel.get("source")
-            relationship = rel.get("relationship")
-            target = rel.get("target")
+            source = rel.get(
+                "source"
+            )
+
+            relationship = rel.get(
+                "relationship"
+            )
+
+            target = rel.get(
+                "target"
+            )
 
             key = (
                 source,
@@ -409,29 +577,49 @@ def format_results(results):
             if key in seen:
                 continue
 
-            seen.add(key)
-
-            output.append(
-                f"   {source} --{relationship}--> {target}"
+            seen.add(
+                key
             )
 
-    return "\n".join(output)
+            output.append(
+                f"   {source} "
+                f"--{relationship}--> "
+                f"{target}"
+            )
+
+    return "\n".join(
+        output
+    )
 
 
 # ============================================================
 # MAIN KG RETRIEVAL
 # ============================================================
 
-def retrieve_from_kg(question, limit=20):
+def retrieve_from_kg(
+    question,
+    document_id=None,
+    limit=20
+):
 
     database = KGDatabase()
 
     try:
 
-        # Get actual entity types from Neo4j
-        available_types = database.get_entity_types()
+        # ----------------------------------------------------
+        # GET ENTITY TYPES
+        # ----------------------------------------------------
 
-        # Ask LLM how the question should be searched
+        available_types = (
+            database.get_entity_types(
+                document_id=document_id
+            )
+        )
+
+        # ----------------------------------------------------
+        # ASK LLM HOW TO SEARCH
+        # ----------------------------------------------------
+
         plan = understand_question(
             question,
             available_types
@@ -452,14 +640,37 @@ def retrieve_from_kg(question, limit=20):
             "entity"
         )
 
-        print("\nSearch terms:")
-        print(search_terms)
+        print(
+            "\nDocument ID:"
+        )
 
-        print("\nEntity types:")
-        print(entity_types)
+        print(
+            document_id
+        )
 
-        print("\nSearch mode:")
-        print(search_mode)
+        print(
+            "\nSearch terms:"
+        )
+
+        print(
+            search_terms
+        )
+
+        print(
+            "\nEntity types:"
+        )
+
+        print(
+            entity_types
+        )
+
+        print(
+            "\nSearch mode:"
+        )
+
+        print(
+            search_mode
+        )
 
         # ----------------------------------------------------
         # SPECIFIC ENTITY SEARCH
@@ -467,9 +678,12 @@ def retrieve_from_kg(question, limit=20):
 
         if search_mode == "entity":
 
-            results = database.search_specific_entity(
-                search_terms=search_terms,
-                limit=limit
+            results = (
+                database.search_specific_entity(
+                    search_terms=search_terms,
+                    document_id=document_id,
+                    limit=limit
+                )
             )
 
         # ----------------------------------------------------
@@ -478,10 +692,13 @@ def retrieve_from_kg(question, limit=20):
 
         elif search_mode == "type":
 
-            results = database.search_by_type(
-                entity_types=entity_types,
-                search_terms=search_terms,
-                limit=limit
+            results = (
+                database.search_by_type(
+                    entity_types=entity_types,
+                    search_terms=search_terms,
+                    document_id=document_id,
+                    limit=limit
+                )
             )
 
         else:
@@ -501,20 +718,47 @@ def retrieve_from_kg(question, limit=20):
 
 if __name__ == "__main__":
 
-    print("\n" + "=" * 60)
-    print("KNOWLEDGE GRAPH RETRIEVAL TEST")
-    print("=" * 60)
-
-    question = input(
-        "\nEnter your question: "
-    ).strip()
-
-    results = retrieve_from_kg(question)
-
-    print("\n" + "=" * 60)
-    print("GRAPH RESULTS")
-    print("=" * 60)
+    print(
+        "\n" + "=" * 60
+    )
 
     print(
-        format_results(results)
+        "KNOWLEDGE GRAPH RETRIEVAL TEST"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    document_id = input(
+        "\nEnter document ID "
+        "(leave empty for legacy/global data): "
+    ).strip()
+
+    question = input(
+        "Enter your question: "
+    ).strip()
+
+    results = retrieve_from_kg(
+        question=question,
+        document_id=document_id or None,
+        limit=20
+    )
+
+    print(
+        "\n" + "=" * 60
+    )
+
+    print(
+        "GRAPH RESULTS"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    print(
+        format_results(
+            results
+        )
     )

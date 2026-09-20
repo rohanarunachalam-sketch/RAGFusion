@@ -8,25 +8,43 @@ from backend.retrieval.kg_retrieval import retrieve_from_kg
 
 def hybrid_retrieve(
     question: str,
+    document_id: str,
     vector_k: int = 5,
     kg_limit: int = 10
 ):
     """
     Retrieve context from both:
 
-    1. FAISS vector database
-    2. Neo4j knowledge graph
+    1. Document-specific FAISS vector database
+    2. Knowledge Graph
 
-    Returns both contexts separately so the generation
-    layer can combine them later.
+    The document_id ensures vector retrieval uses
+    the correct document's vector database.
     """
+
+    # --------------------------------------------------------
+    # VALIDATION
+    # --------------------------------------------------------
+
+    if not question.strip():
+
+        raise ValueError(
+            "Question cannot be empty."
+        )
+
+    if not document_id:
+
+        raise ValueError(
+            "Document ID is required."
+        )
 
     # --------------------------------------------------------
     # VECTOR RETRIEVAL
     # --------------------------------------------------------
 
     vector_results = retrieve_from_vector(
-        question,
+        question=question,
+        document_id=document_id,
         k=vector_k
     )
 
@@ -35,7 +53,7 @@ def hybrid_retrieve(
     # --------------------------------------------------------
 
     kg_results = retrieve_from_kg(
-        question,
+        question=question,
         limit=kg_limit
     )
 
@@ -45,6 +63,7 @@ def hybrid_retrieve(
 
     return {
         "question": question,
+        "document_id": document_id,
         "vector_results": vector_results,
         "kg_results": kg_results,
     }
@@ -54,9 +73,12 @@ def hybrid_retrieve(
 # FORMAT VECTOR CONTEXT
 # ============================================================
 
-def format_vector_context(vector_results):
+def format_vector_context(
+    vector_results
+):
 
     if not vector_results:
+
         return "No vector context found."
 
     output = []
@@ -94,10 +116,15 @@ PAGE: {page}
 # FORMAT KG CONTEXT
 # ============================================================
 
-def format_kg_context(kg_results):
+def format_kg_context(
+    kg_results
+):
 
     if not kg_results:
-        return "No knowledge graph context found."
+
+        return (
+            "No knowledge graph context found."
+        )
 
     output = []
 
@@ -160,14 +187,18 @@ def format_kg_context(kg_results):
 
         output.append("")
 
-    return "\n".join(output)
+    return "\n".join(
+        output
+    )
 
 
 # ============================================================
 # FORMAT COMPLETE HYBRID CONTEXT
 # ============================================================
 
-def format_hybrid_context(hybrid_results):
+def format_hybrid_context(
+    hybrid_results
+):
 
     vector_context = format_vector_context(
         hybrid_results["vector_results"]
@@ -196,24 +227,47 @@ def format_hybrid_context(hybrid_results):
 
 if __name__ == "__main__":
 
-    print("\n" + "=" * 60)
-    print("HYBRID RETRIEVAL TEST")
-    print("=" * 60)
+    print(
+        "\n" + "=" * 60
+    )
+
+    print(
+        "HYBRID RETRIEVAL TEST"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    document_id = input(
+        "\nEnter document ID: "
+    ).strip()
 
     question = input(
-        "\nEnter your question: "
+        "Enter your question: "
     ).strip()
 
     results = hybrid_retrieve(
-        question,
+        question=question,
+        document_id=document_id,
         vector_k=5,
         kg_limit=10
     )
 
-    print("\n" + "=" * 60)
-    print("HYBRID CONTEXT")
-    print("=" * 60)
+    print(
+        "\n" + "=" * 60
+    )
 
     print(
-        format_hybrid_context(results)
+        "HYBRID CONTEXT"
+    )
+
+    print(
+        "=" * 60
+    )
+
+    print(
+        format_hybrid_context(
+            results
+        )
     )

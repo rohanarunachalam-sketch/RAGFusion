@@ -18,7 +18,7 @@ BACKEND_URL = os.getenv(
 # =========================================================
 
 st.set_page_config(
-    page_title="Hybrid RAG Assistant",
+    page_title="RAGFusion",
     page_icon="🔎",
     layout="wide"
 )
@@ -68,13 +68,16 @@ if "document_processed" not in st.session_state:
 if "uploaded_filename" not in st.session_state:
     st.session_state.uploaded_filename = None
 
+if "document_id" not in st.session_state:
+    st.session_state.document_id = None
+
 
 # =========================================================
 # TITLE
 # =========================================================
 
 st.markdown(
-    '<div class="main-title">Hybrid RAG Assistant</div>',
+    '<div class="main-title">RAGFusion</div>',
     unsafe_allow_html=True
 )
 
@@ -105,6 +108,7 @@ def check_backend():
         return False
 
     except requests.RequestException:
+
         return False
 
 
@@ -138,18 +142,25 @@ def process_pdf(uploaded_file):
 
                 return {
                     "success": True,
+
                     "message": data.get(
                         "message",
                         "PDF processed successfully."
                     ),
+
                     "filename": data.get(
                         "filename",
                         uploaded_file.name
+                    ),
+
+                    "document_id": data.get(
+                        "document_id"
                     )
                 }
 
             return {
                 "success": False,
+
                 "message": data.get(
                     "message",
                     "PDF processing failed."
@@ -157,12 +168,16 @@ def process_pdf(uploaded_file):
             }
 
         try:
+
             error_data = response.json()
+
             error_message = error_data.get(
                 "detail",
                 "Unknown backend error."
             )
+
         except Exception:
+
             error_message = response.text
 
         return {
@@ -174,14 +189,21 @@ def process_pdf(uploaded_file):
 
         return {
             "success": False,
-            "message": "Backend request timed out while processing the PDF."
+
+            "message": (
+                "Backend request timed out "
+                "while processing the PDF."
+            )
         }
 
     except requests.RequestException as e:
 
         return {
             "success": False,
-            "message": f"Could not connect to backend: {e}"
+
+            "message": (
+                f"Could not connect to backend: {e}"
+            )
         }
 
 
@@ -189,16 +211,24 @@ def process_pdf(uploaded_file):
 # ASK QUESTION
 # =========================================================
 
-def ask_backend(question):
+def ask_backend(
+    question,
+    document_id
+):
 
     try:
 
         response = requests.post(
+
             f"{BACKEND_URL}/ask",
+
             json={
-                "question": question
+                "question": question,
+                "document_id": document_id
             },
+
             timeout=300
+
         )
 
         if response.status_code == 200:
@@ -208,44 +238,71 @@ def ask_backend(question):
             if data.get("success"):
 
                 return {
+
                     "success": True,
+
                     "answer": data.get(
                         "answer",
                         ""
                     )
+
                 }
 
             return {
+
                 "success": False,
-                "message": "Backend could not generate an answer."
+
+                "message": (
+                    "Backend could not "
+                    "generate an answer."
+                )
+
             }
 
         try:
+
             error_data = response.json()
+
             error_message = error_data.get(
                 "detail",
                 "Unknown backend error."
             )
+
         except Exception:
+
             error_message = response.text
 
         return {
+
             "success": False,
+
             "message": error_message
+
         }
 
     except requests.Timeout:
 
         return {
+
             "success": False,
-            "message": "Backend request timed out while generating the answer."
+
+            "message": (
+                "Backend request timed out "
+                "while generating the answer."
+            )
+
         }
 
     except requests.RequestException as e:
 
         return {
+
             "success": False,
-            "message": f"Could not connect to backend: {e}"
+
+            "message": (
+                f"Could not connect to backend: {e}"
+            )
+
         }
 
 
@@ -266,8 +323,6 @@ with st.sidebar:
     else:
 
         st.error("Backend unavailable")
-
-    st.caption(f"Backend: {BACKEND_URL}")
 
     st.divider()
 
@@ -321,6 +376,10 @@ with st.sidebar:
                         result["filename"]
                     )
 
+                    st.session_state.document_id = (
+                        result["document_id"]
+                    )
+
                 else:
 
                     st.error(
@@ -357,10 +416,12 @@ if st.session_state.document_processed:
 
     question = st.text_area(
         "Enter your question",
+
         placeholder=(
             "Example: What technologies are used "
             "in the web application?"
         ),
+
         height=120
     )
 
@@ -378,6 +439,13 @@ if st.session_state.document_processed:
                 "Please enter a question."
             )
 
+        elif not st.session_state.document_id:
+
+            st.error(
+                "Document information is missing. "
+                "Please process the PDF again."
+            )
+
         elif not check_backend():
 
             st.error(
@@ -391,7 +459,11 @@ if st.session_state.document_processed:
             ):
 
                 result = ask_backend(
-                    question.strip()
+
+                    question.strip(),
+
+                    st.session_state.document_id
+
                 )
 
             if result["success"]:
@@ -462,5 +534,5 @@ else:
 st.divider()
 
 st.caption(
-    "Hybrid RAG • Streamlit + FastAPI + FAISS + Neo4j + GPT-4.1-mini"
+    "RAGFusion • Streamlit + FastAPI + FAISS + Neo4j + GPT-4.1-mini"
 )

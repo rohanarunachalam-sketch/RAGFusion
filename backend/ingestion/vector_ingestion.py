@@ -12,7 +12,11 @@ from backend.config import (
 )
 
 
-def create_vector_store(pdf_path: str, output_path: str):
+def create_vector_store(
+    pdf_path: str,
+    output_path: str,
+    document_id: str | None = None
+):
 
     print("\n" + "=" * 60)
     print("VECTOR INGESTION")
@@ -21,6 +25,7 @@ def create_vector_store(pdf_path: str, output_path: str):
     # ---------------------------------
     # 1. Load PDF
     # ---------------------------------
+
     print("\n[1/4] Loading PDF...")
 
     pages = load_pdf(pdf_path)
@@ -30,6 +35,7 @@ def create_vector_store(pdf_path: str, output_path: str):
     # ---------------------------------
     # 2. Create chunks
     # ---------------------------------
+
     print("\n[2/4] Creating chunks...")
 
     chunks = create_chunks(pages)
@@ -39,20 +45,30 @@ def create_vector_store(pdf_path: str, output_path: str):
     # ---------------------------------
     # 3. Convert to LangChain Documents
     # ---------------------------------
+
     documents = []
 
     for item in chunks:
 
+        metadata = dict(
+            item.get("metadata", {})
+        )
+
+        # Add document ID to every chunk
+        if document_id:
+            metadata["document_id"] = document_id
+
         documents.append(
             Document(
                 page_content=item["text"],
-                metadata=item["metadata"]
+                metadata=metadata
             )
         )
 
     # ---------------------------------
     # 4. Create embeddings + FAISS
     # ---------------------------------
+
     print("\n[3/4] Creating embeddings...")
 
     embeddings = OpenAIEmbeddings(
@@ -67,21 +83,29 @@ def create_vector_store(pdf_path: str, output_path: str):
         embeddings
     )
 
+    # ---------------------------------
+    # Save vector store
+    # ---------------------------------
+
     output_path = Path(output_path)
+
     output_path.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    vector_store.save_local(str(output_path))
+    vector_store.save_local(
+        str(output_path)
+    )
 
     print("\n" + "=" * 60)
     print("VECTOR INGESTION COMPLETE")
     print("=" * 60)
 
-    print(f"Pages   : {len(pages)}")
-    print(f"Chunks  : {len(chunks)}")
-    print(f"FAISS   : {output_path}")
+    print(f"Pages      : {len(pages)}")
+    print(f"Chunks     : {len(chunks)}")
+    print(f"Document ID: {document_id}")
+    print(f"FAISS      : {output_path}")
 
     return vector_store
 
@@ -92,9 +116,14 @@ if __name__ == "__main__":
         "\nEnter PDF path: "
     ).strip()
 
+    document_id = input(
+        "Enter document ID (optional): "
+    ).strip()
+
     output_path = "data/vectorstores"
 
     create_vector_store(
         pdf_path,
-        output_path
+        output_path,
+        document_id=document_id or None
     )
